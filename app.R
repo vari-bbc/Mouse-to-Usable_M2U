@@ -1,3 +1,6 @@
+
+#GitHub
+
 # 1.0 App Startup ----
 
 ## 1.1 Load Libraries ----
@@ -118,7 +121,7 @@ ui <- page_fluid(
     navDoubleLevelTab("Variable Selection", id = "VariableSelection",
       navSubTab("Layout Selection","layoutSelection",
         multiElement(
-          elementType = c("MultiLockedSelect","SingleLockedSelect","MultiLockedSelect","MultiLockedSelect","MultiLockedSelect"),
+          elementType = c("MultiLockedSelect","SingleLockedSelect","MultiLockedSelect","MultiLockedSelect","SingleLockedSelect"),
           elementID = c("AoI","regionLevel","legendVar","rowVars","colVars"),
           elementLabel = c("Select Annotation(s) of Interest (AoI)",
                            "Select Region Level",
@@ -452,7 +455,7 @@ server <- function(session, input, output) {
           numericCols <- numericCols
           
             mergeItems <- mergeData(rawData, annoFile, numericCols)
-            fullData <- mergeItems[[1]]
+            fullData <- as.data.frame(mergeItems[[1]])
             numericCols <- mergeItems[[2]]
             
             enable("downloadCheckpointData")
@@ -522,7 +525,7 @@ server <- function(session, input, output) {
           numericCols <- numericCols
           
             mergeItems <- mergeData(rawData, annoFile, numericCols)
-            fullData <- mergeItems[[1]]
+            fullData <- as.data.frame(mergeItems[[1]])
             numericCols <- mergeItems[[2]]
             
             enable("downloadCheckpointData")
@@ -825,8 +828,8 @@ server <- function(session, input, output) {
     observeEvent(input$varSetButton, {
         startSection("Variable Set")
         
-        preVar <<- global$dataFrames$preVar
-        variables <<- global$variables 
+        preVar <- global$dataFrames$preVar
+        variables <- global$variables 
         
         # Get the options
         annoCols <- variables$AoI
@@ -1004,7 +1007,7 @@ server <- function(session, input, output) {
         # rowName <<- rowName
         # colName <<- colName
         
-        if(rowName != "none"){
+        if(rowName[1] != "none"){
           rowSubset <- forAnnots[,c("x",rowName)]
           rowSubset <- rowSubset[!duplicated(rowSubset$x),]
           rownames(rowSubset) <- rowSubset$x
@@ -1014,8 +1017,7 @@ server <- function(session, input, output) {
           displayRowNames <- vector(mode="character", length = length(forAnnots[,"x"]))
         }
         
-        if (length(colName) > 1){
-          colName <- colName[!colName %in% "none"]
+        if (colName != "none"){
           if (any("current level" %in% colName)){ colName[colName %in% "current level"] <- "region" }
           colSubset <- forAnnots[,c("y",colName)]
           if (length(unique(forAnnots$hemi))>1){ colSubset <- cbind(forAnnots[,"hemi"],colSubset) }
@@ -1287,12 +1289,20 @@ server <- function(session, input, output) {
         slices <- input$slices
         valueTable <- global$dataFrames$fullData
         annoCols <- global$variables$AoI
-        colorPalette <- global$variables$colorScheme
         
         minVal <- input$minVal
         maxVal <- input$maxVal
         
         invert <- global$variables$invert
+        
+        colorPalette <- global$variables$colorPalette
+        viridisOptions <- input$viridisOptions
+        twoCol1 <- input$twoCol1
+        twoCol2 <- input$twoCol2
+        threeCol1 <- input$threeCol1
+        threeCol2 <- input$threeCol2
+        threeCol3 <- input$threeCol3
+        
         # 
         # View(valueTable)
         
@@ -1542,6 +1552,30 @@ server <- function(session, input, output) {
         facetTextSizeY <- -0.125*max(nchar(unique(valueTable$x)))+8.75
         lineWidthVar <- 0.1
         
+        factorLevels <- as.numeric(unique(SVGData$keyName))
+        factorLevels <- sort(factorLevels)
+        SVGData$keyName <- factor(SVGData$keyName, levels = factorLevels)
+        # 
+        factorLevels <- as.numeric(levels(noData$keyName))
+        factorLevels <- sort(factorLevels)
+        noData$keyName <- factor(noData$keyName, levels = factorLevels)
+        
+        factorLevels <- as.numeric(levels(hasData$keyName))
+        factorLevels <- sort(factorLevels)
+        hasData$keyName <- factor(hasData$keyName, levels = factorLevels)
+        
+        factorLevels <- as.numeric(levels(whiteData$keyName))
+        factorLevels <- sort(factorLevels)
+        whiteData$keyName <- factor(whiteData$keyName, levels = factorLevels)
+        
+        factorLevels <- as.numeric(levels(fiberNoData$keyName))
+        factorLevels <- sort(factorLevels)
+        fiberNoData$keyName <- factor(fiberNoData$keyName, levels = factorLevels)
+        
+        factorLevels <- as.numeric(levels(fiberData$keyName))
+        factorLevels <- sort(factorLevels)
+        fiberData$keyName <- factor(fiberData$keyName, levels = factorLevels)
+        
         #if viridis:
         if (colorPalette == "Viridis"){
             if (is.null(input$viridisOptions)){
@@ -1613,7 +1647,7 @@ server <- function(session, input, output) {
             #ggsave(paste0("Test_AnatomicalHeatmap.png"), theHeatmap, height = length(unique(valueTable$x)) + 2, width = length(slices) + 1)
             
         } else if (colorPalette == "2 Color"){
-            heatmapColors <- colorRampPalette(c(twoCol1,twoCol2))
+            heatmapColors <- c(twoCol1,twoCol2)
             
             theHeatmap <- ggplot(SVGData, aes(x = x, y = y)) +
             #noData
@@ -1624,7 +1658,7 @@ server <- function(session, input, output) {
             
             #data
             geom_polygon(data = hasData,aes(group = unique, fill = Value)) +
-            scale_fill_manual(heatmapColors,na.value="grey") +
+            scale_fill_gradientn(colors = heatmapColors,na.value="grey") +
             geom_path(data = hasData,aes(group = unique),linewidth = lineWidthVar) +
             new_scale("fill")
             
@@ -1644,7 +1678,7 @@ server <- function(session, input, output) {
             
             #fiber tracts
             geom_polygon(data = fiberData,aes(group = unique, fill = Value)) +
-            scale_fill_manual(heatmapColors,na.value="grey",guide = "none") +
+            scale_fill_gradientn(colors = heatmapColors,na.value="grey",guide = "none") +
             geom_path(data = fiberData,aes(group = unique),linewidth = lineWidthVar) +
             
             #Theme stuff
@@ -1674,7 +1708,7 @@ server <- function(session, input, output) {
             )
             
         } else {
-            heatmapColors <- colorRampPalette(c(threeCol1,threeCol2,threeCol3))
+            heatmapColors <- c(threeCol1,threeCol2,threeCol3)
             
             theHeatmap <- ggplot(SVGData, aes(x = x, y = y)) +
             #noData
@@ -1685,7 +1719,7 @@ server <- function(session, input, output) {
             
             #data
             geom_polygon(data = hasData,aes(group = unique, fill = Value)) +
-            scale_fill_manual(heatmapColors,na.value="grey") +
+            scale_fill_gradientn(colors = heatmapColors,na.value="grey") +
             geom_path(data = hasData,aes(group = unique),linewidth = lineWidthVar) +
             new_scale("fill")
             
@@ -1705,7 +1739,7 @@ server <- function(session, input, output) {
             
             #fiber tracts
             geom_polygon(data = fiberData,aes(group = unique, fill = Value)) +
-            scale_fill_manual(heatmapColors,na.value="grey",guide = "none") +
+            scale_fill_gradientn(colors = heatmapColors,na.value="grey",guide = "none") +
             geom_path(data = fiberData,aes(group = unique),linewidth = lineWidthVar) +
             
             #Theme stuff
