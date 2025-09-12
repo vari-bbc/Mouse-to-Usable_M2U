@@ -131,6 +131,7 @@ calculateValueTable <- function(preVar,variables,AoIStrata, VoI = NA){
   
   # merge in region key
   initialData <- left_join(initialData, regionLevelKey, by = "region")
+  initialData <- as.data.frame(initialData)
   
   # updatedLevel ← regionLevel (keep region for math)
   if (regionLevel != "daughter"){
