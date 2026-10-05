@@ -59,6 +59,9 @@ loadSVGs <- function(slices){
     fileName <- paste("Necessary Files/SVG_Dataframes/",slices[i], "svgFile.rds",sep = "")
     baseCombinedSVGs <- rbind(baseCombinedSVGs,readRDS(fileName))
   }
+  neededTree <- tree[,c("ABAID","region","minor","major","parent")]
+  colnames(neededTree)[1] <- "id"
+  baseCombinedSVGs <- left_join(baseCombinedSVGs,neededTree)
   return(baseCombinedSVGs)
 }
 
@@ -239,13 +242,22 @@ sortKeynames <- function(theData){
 # ___________________ ----
 
 makeHeatmap <- function(heatmapColors,SVGData,
-                        noData,hasData,
+                        greyBacking,noData,hasData,
                         fiberNoData,fiberData,
                         minVal,maxVal,lineWidthVar,
                         facetTextSizeX,facetTextSizeY,
                         annoCols){
   
   theHeatmap <- ggplot(SVGData, aes(x = x, y = y))
+  
+  # greyBacking
+  if (nrow(greyBacking) > 0){
+    theHeatmap <- theHeatmap + geom_polygon(data = greyBacking,aes(group = unique, fill = toFill)) +
+      scale_fill_manual( values = c("gray"), na.value = "grey", guide="none") +
+      geom_path(data = greyBacking,aes(group = unique),linewidth = lineWidthVar)+
+      new_scale("fill")
+  }
+  
   
   # noData
   if (nrow(noData) > 0){
@@ -258,7 +270,7 @@ makeHeatmap <- function(heatmapColors,SVGData,
   # data
   theHeatmap <- theHeatmap + geom_polygon(data = hasData,aes(group = unique, fill = Value)) +
     scale_fill_gradientn(colors = heatmapColors, limits = c(minVal, maxVal),
-                         na.value="grey", guide = "none") +
+                         na.value="grey") +
     geom_path(data = hasData,aes(group = unique),linewidth = lineWidthVar) +
     new_scale("fill")
   
@@ -314,7 +326,7 @@ makeHeatmap <- function(heatmapColors,SVGData,
 # ___________________ ----
 
 makeSigHeatmap <- function(heatmapColors,SVGData,
-                        noData,hasData,
+                        greyBacking,noData,hasData,
                         fiberNoData,fiberData,
                         minVal,maxVal,lineWidthVar,
                         facetTextSizeX,facetTextSizeY,
@@ -342,6 +354,14 @@ makeSigHeatmap <- function(heatmapColors,SVGData,
   fiberData <- left_join(fiberData,colorKey)
   
   theHeatmap <- ggplot(SVGData, aes(x = x, y = y))
+  
+  # greyBacking
+  if (nrow(greyBacking) > 0){
+    theHeatmap <- theHeatmap + geom_polygon(data = greyBacking,aes(group = unique, fill = toFill)) +
+      scale_fill_manual( values = c("gray"), na.value = "grey", guide="none") +
+      geom_path(data = greyBacking,aes(group = unique),linewidth = lineWidthVar)+
+      new_scale("fill")
+  }
   
   # noData
   if (nrow(noData) > 0){
@@ -462,6 +482,11 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
   # Load the large dataframe with all slices svg data
   baseCombinedSVGs <- loadSVGs(slices)
   
+  # Override regionType to update fiber tracts
+  baseCombinedSVGs[baseCombinedSVGs$major %in% c("fiber tracts"),"regionType"] <- "fiber"
+  # Label Grey to pull later
+  baseCombinedSVGs[baseCombinedSVGs$region %in% c("grey"),"regionType"] <- "grey"
+  
   # Remove extra regions and hemispheres
   baseCombinedSVGs <- simplifySVGs(baseCombinedSVGs,regionLevel,valueTable)
   
@@ -537,9 +562,6 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
   
   # Remove all extra large objects
   rm(baseCombinedSVGs)
-  rm(missingDataFixCols)
-  rm(missingDataSVG)
-  rm(svgAndSubset)
   rm(svgUniqueID)
   rm(dataSVG)
   rm(noDataSVG)
@@ -560,6 +582,8 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
   fiberNoData <- SVGNoData[SVGNoData$regionType == "fiber",]
   noData <- SVGNoData[is.na(SVGNoData$regionType),]
   
+  greyBacking <- SVGData[SVGData$regionType == "grey",]
+  
   # Remove un-needed dataframe
   rm(SVGNoData)
   
@@ -569,6 +593,7 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
   fiberNoData[,c("regionType")] <- NULL
   hasData[,c("regionType")] <- NULL
   noData[,c("regionType")] <- NULL
+  greyBacking[,c("regionType")] <- NULL
   
   # Redundant coloring, but toFill is needed for plotting
   if (nrow(noData) > 0){
@@ -577,6 +602,9 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
   if (nrow(fiberNoData) > 0){
     fiberNoData$toFill <- "grey"
   }
+  if (nrow(greyBacking) > 0){
+    greyBacking$toFill <- "grey"
+  }
   
   # Ensure only hemis with data are kept
   if (length(unique(hasData$hemi)) < 2){
@@ -584,6 +612,7 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
     
     hasData <- hasData[hasData$hemi == haveHemi,]
     fiberData <- fiberData[fiberData$hemi == haveHemi,]
+    greyBacking <- greyBacking[greyBacking$hemi == haveHemi,]
     if (nrow(noData) > 0){
       noData <- noData[noData$hemi == haveHemi,]
     }
@@ -591,6 +620,16 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
       fiberNoData <- fiberNoData[fiberNoData$hemi == haveHemi,]
     }
   }
+  
+  # Check for NA in keyname and annoCols
+  fiberData <- fiberData[!is.na(fiberData$keyName),]
+  
+  fiberData <- fiberData[fiberData$region != "grey",]
+  hasData <- hasData[hasData$region != "grey",]
+  
+  ## Simplify Heatmap Plotting----
+  
+  
   
   ## Make Heatmap ----
   
@@ -608,19 +647,16 @@ makeAnatomicalHeatmaps <- function(valueTable, slices, variables,
     heatmapColors <- c("#B2182B", "#2166AC", "white")
   }
   
-  # Check for NA in keyname and annoCols
-  fiberData <- fiberData[!is.na(fiberData$keyName),]
-  
   if(!isSig){
     theHeatmap <- makeHeatmap(heatmapColors,SVGData,
-                            noData,hasData,
+                            greyBacking,noData,hasData,
                             fiberNoData,fiberData,
                             minVal,maxVal,lineWidthVar,
                             facetTextSizeX,facetTextSizeY,
                             annoCols)
   } else {
     theHeatmap <- makeSigHeatmap(heatmapColors,SVGData,
-                            noData,hasData,
+                            greyBacking,noData,hasData,
                             fiberNoData,fiberData,
                             minVal,maxVal,lineWidthVar,
                             facetTextSizeX,facetTextSizeY,

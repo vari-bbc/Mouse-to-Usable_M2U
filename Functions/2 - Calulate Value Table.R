@@ -17,7 +17,7 @@ calculateValueTable <- function(preVar, variables, AoIStrata, VoI = NA){
   colnames(fullData) <- sub(" ", ".", colnames(fullData))
   
   # Get keys from the tree for merging
-  regionLevelKey <- tree[, c("region", "parent", "major")]
+  regionLevelKey <- tree[, c("region", "parent", "major", "minor")]
   
   # Build statsCols if VoI is provided
   statsCols <- NULL
