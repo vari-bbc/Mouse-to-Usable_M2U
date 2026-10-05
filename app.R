@@ -2,21 +2,52 @@
 # App Startup ----
 
 ## 1.0 Load Libraries ----
-pacman::p_load(shiny,bslib,shinyjs,bsicons,plotly,DT,readr,tidytable,
-               colourpicker,pheatmap,grid,ggnewscale,stringr,viridis,
-               svglite,tibble,splitstackshape,ggh4x,ggplot2,ggsci,
-               ggbeeswarm,ggprism,splitstackshape,lemon,dplyr,
-               data.table)
+# EZRShiny is not on CRAN, so it is installed from GitHub. On shinyapps.io the
+# packages are installed when the bundle is built, using the GitHub source that
+# rsconnect reads out of the installed package's DESCRIPTION, so this guard
+# never runs there. It is here so a local or HPC session that does not have
+# the package yet installs it on first start.
+if (!requireNamespace("EZRShiny", quietly = TRUE)) {
+  if (!requireNamespace("remotes", quietly = TRUE)) {
+    install.packages("remotes", repos = "https://cloud.r-project.org")
+  }
+  remotes::install_github("vari-bbc/EZRShiny")
+}
+
+# splitstackshape, ggh4x and lemon were in the old pacman call but are not used
+# by this app and were not installed, so they are not loaded here.
+library(EZRShiny)
+library(shiny)
+library(bslib)
+library(shinyjs)
+library(bsicons)
+library(plotly)
+library(DT)
+library(readr)
+library(tidytable)
+library(colourpicker)
+library(pheatmap)
+library(grid)
+library(ggnewscale)
+library(stringr)
+library(viridis)
+library(svglite)
+library(tibble)
+library(ggplot2)
+library(ggsci)
+library(ggbeeswarm)
+library(ggprism)
+library(dplyr)
+library(data.table)
 
 ## 2.0 Load Basics ----
-functionFolderPath <<- "Functions"
-source(here::here(paste0(functionFolderPath,"/Updated Shiny RMD Standards.R")))
-sourceFunctions(functionFolderPath)
+options(shiny.maxRequestSize = 300 * 1024^2)
+sourceFunctions("Functions")
 
 
 ## 3.0 Universal Vars ----
 # App Name here:
-appName <<- "M2U"
+appName <- "M2U"
 # Necessary Files here:
 tree <<- readRDS("Necessary Files/flippedTreeMouse.rds")
 template <<- read.csv("Necessary Files/Non-Nutil Template.csv")
@@ -29,9 +60,12 @@ thePalette <<- readRDS("Necessary Files/colorPalette.rds")
 # UI ----
 # Ensure use of document outline and preloading as many inputs as possible
 ui <- UINav(
-  
-  # LogoFile must be placed in www folder and must include ".{type}"
-  logoFile = "Updated M2U Logo.jpg",
+
+  # Logo files must be placed in www folder and must include ".{type}"
+  logoFile = c("VAI 2 Line White.png", "Updated M2U Logo.jpg"),
+  logoHeight = c("35vh", "40vh"),
+  appName = appName,
+  barColor = "#005596",
 
   ## 1.0 File Import ----
   biLevelTab( "File Import",
@@ -39,32 +73,32 @@ ui <- UINav(
     ### 1.1 Initial Import ----
     subTab( "Initial Import",
       navDownload("nnTemplate", "Download the Template for Non-Nutil Data"),
-      navUpload("fileInput", "Select All Files to Import", "Multi"),
+      navUpload("fileInput", "Select All Files to Import", multiple = TRUE),
       navDownload("downloadRawData", "Download the Raw Data Save")
     ),
 
     ### 1.2 Annotation Creation ----
     subTab( "Annotation Creation",
-      navUpload("rawAnnoInput", "Input Raw Data if needed", "Multi"),
-      navCheckbox("singleHemi", "Single Hemisphere (Defaults to right)", F),
-      navSelect("annoRecOptions", "Recommended Options", "Multi", "Locked", 
-                theChoices = recCols, selected = recCols),
-      navSelect("annoCustomOptions", "Custom Options", "Multi", "Create"),
+      navUpload("rawAnnoInput", "Input Raw Data if needed", multiple = TRUE),
+      navCheckbox("singleHemi", "Single Hemisphere (Defaults to right)", value = FALSE),
+      navSelect("annoRecOptions", "Recommended Options",
+                choices = recCols, selected = recCols, multiple = TRUE),
+      navSelect("annoCustomOptions", "Custom Options", multiple = TRUE, create = TRUE),
       navButton("createAnnoFile", "Create Annotation File"),
       navDownload("downloadAnnoFile", "Download the Blank Annotation File")
     ),
 
     ### 1.3 Merge Data and Annotations ----
     subTab( "Merge Data and Annotations",
-      navUpload("rawDataInput", "Select your Raw Data File", "Single"),
-      navUpload("annoFileInput", "Select your completed Annotation File", "Single"),
+      navUpload("rawDataInput", "Select your Raw Data File"),
+      navUpload("annoFileInput", "Select your completed Annotation File"),
       navDownload("downloadCheckpointData", "Download the Checkpoint for the Data")
     ),
 
     ### 1.4 Checkpoint Start ----
     subTab( "Checkpoint Start",
-      navUpload("checkpointInput", "Select your Checkpoint File", "Single"),
-      navUpload("varInput", "Select your Variable File", "Single")
+      navUpload("checkpointInput", "Select your Checkpoint File"),
+      navUpload("varInput", "Select your Variable File")
     )
   ),
 
@@ -73,35 +107,36 @@ ui <- UINav(
 
     ### 2.1 Layout Selection ----
     subTab( "Layout Selection",
-      navSelect("AoI", "Select Annotation(s) of Interest (AoI)", "Multi", "Locked"),
-      navSelect("regionLevel", "Select Region Level", "Single", "Locked", 
-                theChoices = c("daughter", "parent", "minor", "major"), selected = "daughter"),
-      navSelect("legendVar", "Select Legend Variables (based on selected region level)", "Multi", "Locked",
-                theChoices = c("current level", "parent", "major"), selected = c("current level","major")),
-      navSelect("rowVars", "Select Row Names", "Multi", "Locked"),
-      navSelect("colVars", "Select Column Names (based on selected region level)", "Single", "Locked",
-                theChoices = c("none","current level", "parent", "major"), selected = "none")
+      navSelect("AoI", "Select Annotation(s) of Interest (AoI)", multiple = TRUE),
+      navSelect("regionLevel", "Select Region Level",
+                choices = c("daughter", "parent", "minor", "major"), selected = "daughter"),
+      navSelect("legendVar", "Select Legend Variables (based on selected region level)",
+                choices = c("current level", "parent", "major"),
+                selected = c("current level","major"), multiple = TRUE),
+      navSelect("rowVars", "Select Row Names", multiple = TRUE),
+      navSelect("colVars", "Select Column Names (based on selected region level)",
+                choices = c("none","current level", "parent", "major"), selected = "none")
     ),
 
     ### 2.2 Data and Transformation ----
     subTab( "Data and Transformation",
-      navSelect("valueVar", "Select Column to get Data from", "Single", "Locked"),
-      navCheckbox("logged", "Log Transform", T),
-      navCheckbox("multiPercent", "Multiply by 100", F),
-      navCheckbox("deviPercent", "Divide by 100", F),
-      navCheckbox("trim", "Trim", T),
-      navSelect("regionsToRemove", "Regions to ignore", "Multi", "Locked",
-                theChoices = c("none",tree$region), selected = "none")
+      navSelect("valueVar", "Select Column to get Data from"),
+      navCheckbox("logged", "Log Transform", value = TRUE),
+      navCheckbox("multiPercent", "Multiply by 100", value = FALSE),
+      navCheckbox("deviPercent", "Divide by 100", value = FALSE),
+      navCheckbox("trim", "Trim", value = TRUE),
+      navSelect("regionsToRemove", "Regions to ignore",
+                choices = c("none",tree$region), selected = "none", multiple = TRUE)
     ),
 
     ### 2.3 Color Scheme ----
     subTab( "Color Scheme",
-      navCheckbox("invert", "Invert the Color Scheme", F),
+      navCheckbox("invert", "Invert the Color Scheme", value = FALSE),
       navOutputText("minMaxText"),
-      navNumeric("minVal", "Set the Minimum Value of Scale", 0),
-      navNumeric("maxVal", "Set the Maximum Value of Scale", 1),
-      navSelect("colorPalette", "Select Color Palette", "Single", "Locked", 
-                theChoices = c("Viridis", "2 Color", "3 Color")),
+      navNumeric("minVal", "Set the Minimum Value of Scale", value = 0),
+      navNumeric("maxVal", "Set the Maximum Value of Scale", value = 1),
+      navSelect("colorPalette", "Select Color Palette",
+                choices = c("Viridis", "2 Color", "3 Color")),
       uiOutput("colorOptions")
     ),
 
@@ -129,8 +164,8 @@ ui <- UINav(
     ### 3.2 Anatomical Heatmap ----
     subSidebarTab( "Anatomical Heatmap",
       sidebarElements = list(
-        navSelect("slices", "Select Allen Brain Atlas slices to plot", "Multi", "Locked",
-                  theChoices = c(1:132), selected = c(32,46,67,75,82,96)),
+        navSelect("slices", "Select Allen Brain Atlas slices to plot",
+                  choices = c(1:132), selected = c(32,46,67,75,82,96), multiple = TRUE),
         navButton("anatomicalHeatmap", "Create the anatomical heatmap"),
         navDownload("anatomicalHeatmapDownload", "Download the anatomical heatmap (click once and then wait)")
       ),
