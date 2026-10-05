@@ -56,7 +56,7 @@ orderTheData <- function (theData,dataVar,regionLevel){
 loadSVGs <- function(slices){
   baseCombinedSVGs <- data.frame()
   for (i in 1:length(slices)){
-    fileName <- paste("Necessary Files/SVG_Dataframes/",slices[i], "svgFile.rds",sep = "")
+    fileName <- paste("Necessary_Files/SVG_Dataframes/",slices[i], "svgFile.rds",sep = "")
     baseCombinedSVGs <- rbind(baseCombinedSVGs,readRDS(fileName))
   }
   neededTree <- tree[,c("ABAID","region","minor","major","parent")]

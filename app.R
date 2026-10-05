@@ -50,11 +50,11 @@ sourceFunctions("Functions")
 # App Name here:
 appName <- "M2U"
 # Necessary Files here:
-tree <<- readRDS("Necessary Files/flippedTreeMouse.rds")
-template <<- read.csv("Necessary Files/Non-Nutil Template.csv")
+tree <<- readRDS("Necessary_Files/flippedTreeMouse.rds")
+template <<- read.csv("Necessary_Files/Non-Nutil Template.csv")
 recCols <<- c("mouse","sex","treatment","mpi","genotype","marker","batch")
 baseCols <<- c("fileName", "region", "ABAID", "hemi")
-thePalette <<- readRDS("Necessary Files/colorPalette.rds")
+thePalette <<- readRDS("Necessary_Files/colorPalette.rds")
 
 
 # ___________________ ----
@@ -198,7 +198,7 @@ server <- function(session, input, output) {
       rowVars = c(), colVars = c(),
       #dataTrans
       valueVar = c(), logged = F, multiPercent = F, deviPercent = F,
-      trim = T, regionsNoData = c("fiber tracts"),
+      trim = T, regionsToRemove = c(),
       #scaleOptions
       invert = F, minVal = 0, maxVal = 1,
       colorPalette = "",
@@ -206,6 +206,12 @@ server <- function(session, input, output) {
       viridisOptions = "infirno",
       twoCol1 = "white", twoCol2 = "red",
       threeCol1 = "white", threeCol2 = "orange", threeCol3 = "red"
+    ),
+    # Plots are written to the session's temp folder, not the app folder, and
+    # the same path is reused so a re-render always has a file to read
+    files = list(
+      normPlot = tempfile(fileext = ".png"),
+      anatomicalPlot = tempfile(fileext = ".png")
     )
   )
 
@@ -268,15 +274,14 @@ server <- function(session, input, output) {
     numericCols <- importItems[[2]]
 
     # App interactions
-    enable("createAnnoFile")
-    enable("downloadRawData")
+    activateItems(c("createAnnoFile", "downloadRawData"))
 
     output$downloadRawData <- downloadHandler(
         filename = function() {
             paste("RawDataSave.csv")
         },
         content = function(file) {
-          disable("downloadRawData")
+          deactivateItems("downloadRawData")
           write.csv(rawData, file, row.names = FALSE)
         }
     )
@@ -298,7 +303,7 @@ server <- function(session, input, output) {
     numericCols <- colnames(rawData)[!colnames(rawData) %in% baseCols]
 
     # App interactions
-    enable("createAnnoFile")
+    activateItems("createAnnoFile")
 
     #saved globals
     global$dataFrames$rawData <- rawData
@@ -324,13 +329,13 @@ server <- function(session, input, output) {
     annoFile <- createAnnoFile(rawData, recOptions, customOptions, singleHemi)
 
     # App interactions
-    enable("downloadAnnoFile")
+    activateItems("downloadAnnoFile")
     output$downloadAnnoFile <- downloadHandler(
       filename = function() {
         paste("AnnotationFile.csv")
       },
       content = function(file) {
-        disable("downloadAnnoFile")
+        deactivateItems("downloadAnnoFile")
         write.csv(annoFile, file, row.names = FALSE)
       }
     )
@@ -372,14 +377,14 @@ server <- function(session, input, output) {
       numericCols <- mergeItems[[2]]
       
       # App interactions
-      enable("downloadCheckpointData")
+      activateItems("downloadCheckpointData")
 
       output$downloadCheckpointData <- downloadHandler(
           filename = function() {
             paste("CheckpointData.csv")
           },
           content = function(file) {
-            disable("downloadCheckpointData")
+            deactivateItems("downloadCheckpointData")
             fwrite(fullData, file, row.names = FALSE)
           }
       )
@@ -439,13 +444,13 @@ server <- function(session, input, output) {
       numericCols <- mergeItems[[2]]
       
       # App interactions
-      enable("downloadCheckpointData")
+      activateItems("downloadCheckpointData")
       output$downloadCheckpointData <- downloadHandler(
           filename = function() {
             paste("CheckpointData.csv")
           },
           content = function(file) {
-            disable("downloadCheckpointData")
+            deactivateItems("downloadCheckpointData")
             fwrite(fullData, file, row.names = FALSE)
           }
       )
@@ -534,6 +539,9 @@ server <- function(session, input, output) {
   observeEvent(input$varInput, {
     startSection("Variable Load")
 
+    # Load globals
+    annoCols <- c(global$info$recAnnoCols, global$info$customAnnoCols)
+
     # Inputs
     varInputPath <- input$varInput$datapath
 
@@ -541,7 +549,10 @@ server <- function(session, input, output) {
     variables <- readRDS(varInputPath)
 
     # Layout
-    updateSelectizeInput(session, "AoI", choices = recCols, selected = variables$AoI)
+    # Keep the annotation columns the checkpoint set, and make sure the saved
+    # AoI is a choice even if the checkpoint has not been loaded yet
+    updateSelectizeInput(session, "AoI", choices = unique(c(annoCols, variables$AoI)),
+                         selected = variables$AoI)
     updateSelectizeInput(session, "regionLevel", selected = variables$regionLevel)
     updateSelectizeInput(session, "legendVar", selected = variables$legendVar)
     updateSelectizeInput(session, "rowVars", selected = variables$rowVars)
@@ -604,7 +615,6 @@ server <- function(session, input, output) {
     })
     
     # Save globals
-    saveVars <- variables
     global$variables <- variables
 
     endSection("Variable Load")
@@ -617,6 +627,10 @@ server <- function(session, input, output) {
     
     # Do not run until variables actually exist
     if (!is.null(input$AoI)){
+      # Read the previous variables without taking a dependency on them, so
+      # saving back to global at the end does not re-trigger this observer
+      lastVariables <- isolate(global$variables)
+
       # Create variable list using updated inputs
       variables <- list(
         #layout
@@ -624,7 +638,7 @@ server <- function(session, input, output) {
         rowVars = input$rowVars, colVars = input$colVars,
         #dataTrans
         valueVar = input$valueVar, logged = input$logged, multiPercent = input$multiPercent, deviPercent = input$deviPercent,
-        trim = input$trim, regionsNoData = c("fiber tracts"),
+        trim = input$trim, regionsToRemove = input$regionsToRemove,
         #scaleOptions
         invert = input$invert, minVal = input$minVal, maxVal = input$maxVal,
         colorPalette = input$colorPalette,
@@ -635,8 +649,8 @@ server <- function(session, input, output) {
       )
       
       # Update legendVar if regionLevel changed
-      if (input$regionLevel != global$variables$regionLevel){
-        print("Update regionLevel means update legendVar")
+      if (input$regionLevel != lastVariables$regionLevel){
+        message("Update regionLevel means update legendVar")
         if (input$regionLevel == "daughter"){
           updateSelectizeInput(session, "legendVar", choices = c("current level","parent","major"), selected = c("current level","major"))
         } else if (input$regionLevel == "parent"){
@@ -650,8 +664,8 @@ server <- function(session, input, output) {
       }
   
       # Update rowVars input if AOI changed
-      if (any(input$AoI != global$variables$AoI)){
-        print("Update AoI means update RowVars")
+      if (any(input$AoI != lastVariables$AoI)){
+        message("Update AoI means update RowVars")
         updateSelectizeInput(session, "rowVars", choices = c("none",input$AoI), selected = "none")
       }
       
@@ -664,8 +678,8 @@ server <- function(session, input, output) {
       if (is.null(variables$threeCol3)){ variables$threeCol3 <- "red"}
   
       # Update Color Inputs if overall type changed
-      if (input$colorPalette != global$variables$colorPalette){
-        print("Color palette update")
+      if (input$colorPalette != lastVariables$colorPalette){
+        message("Color palette update")
         output$colorOptions <- renderUI({
           if (input$colorPalette == "Viridis"){
             tagList(
@@ -700,7 +714,7 @@ server <- function(session, input, output) {
       # Save to global
       global$variables <- variables
     } else {
-      print("Variables don't exist yet, so ignore")
+      message("Variables don't exist yet, so ignore")
     }
 
     endSection("Variable Selection Update")
@@ -723,14 +737,14 @@ server <- function(session, input, output) {
     valueTable <- calculateValueTable(preVar,variables,AoIStrata)
     
     # App interactions
-    activateItems(c("saveVar","downloadAnnoFile","normDataDownload"))
+    activateItems(c("saveVar","normDataDownload"))
     
     output$saveVar <- downloadHandler(
       filename = function() {
         paste("VariableSave.rds")
       },
       content = function(file) {
-        disable("saveVar")
+        deactivateItems("saveVar")
         saveRDS(variables, file)
       }
     )
@@ -750,7 +764,7 @@ server <- function(session, input, output) {
             paste("normData.csv")
         },
         content = function(file) {
-          disable("normDataDownload")
+          deactivateItems("normDataDownload")
           write.csv(valueTable, file, row.names = FALSE)
         }
     )
@@ -773,6 +787,7 @@ server <- function(session, input, output) {
     # Load globals
     fullData <- global$dataFrames$fullData
     variables <- global$variables
+    normPlotFile <- global$files$normPlot
     
     # Make base plots
     theHeatmaps <- makeNormalHeatmaps(fullData, variables)
@@ -785,34 +800,34 @@ server <- function(session, input, output) {
     # App interactions
     
     # Save and show the display plot
-    ggsave(paste0(session$token,"_NormalHeatmap.png"), plot = displayBasePlot, width = heatmapWidth, height = 5,limitsize = FALSE)
+    ggsave(normPlotFile, plot = displayBasePlot, width = heatmapWidth, height = 5,limitsize = FALSE)
     output$normPlot <- renderImage({
-      list(src = paste0(session$token,"_NormalHeatmap.png"), alt = "plot wasn't made")
-    }, deleteFile = T)
+      list(src = normPlotFile, alt = "plot wasn't made")
+    }, deleteFile = FALSE)
     
     # Enable and make the download for the full plot
-    enable("normHeatmapDownload")
+    activateItems("normHeatmapDownload")
     output$normHeatmapDownload <- downloadHandler(
       filename = function() {
         paste0("heatmap", ".pdf")
       },
       content = function(file) {
-        disable("normHeatmapDownload")
+        deactivateItems("normHeatmapDownload")
         ggsave(file, plot = fullPlot, width = heatmapWidth, height = 10, limitsize = FALSE)
-        print("Done Downloading Heatmap")
+        message("Done Downloading Heatmap")
       }
     )
 
     # Enable and make the download for the base plot
-    enable("normJustPlotDownload")
+    activateItems("normJustPlotDownload")
     output$normJustPlotDownload <- downloadHandler(
       filename = function() {
         paste0("justPlot", ".pdf")
       },
       content = function(file) {
-        disable("normJustPlotDownload")
+        deactivateItems("normJustPlotDownload")
         ggsave(file, plot = displayBasePlot, width = heatmapWidth, height = 10, limitsize = FALSE)
-        print("Done Downloading Heatmap")
+        message("Done Downloading Heatmap")
       }
     )
     
@@ -827,33 +842,32 @@ server <- function(session, input, output) {
     # Load globals
     valueTable <- global$dataFrames$fullData
     variables <- global$variables
+    anatomicalPlotFile <- global$files$anatomicalPlot
 
     # Inputs
     slices <- input$slices
-    
-    valueTable1 <- valueTable
     
     # Create Anatomical Plots
     theHeatmap <- makeAnatomicalHeatmaps(valueTable, slices, variables)
     heatmapHeight <- length(unique(valueTable$x)) + 2
     heatmapWidth <- length(slices) + 1
     
-    ggsave(paste0(session$token,"_AnatomicalHeatmap.png"), theHeatmap, height = heatmapHeight, width = heatmapWidth,limitsize = FALSE)
+    ggsave(anatomicalPlotFile, theHeatmap, height = heatmapHeight, width = heatmapWidth,limitsize = FALSE)
     
     # App interactions
     output$anatomicalPlot <- renderImage({
-      list(src = paste0(session$token,"_AnatomicalHeatmap.png"), alt = "plot wasn't made")
-    }, deleteFile = T)
+      list(src = anatomicalPlotFile, alt = "plot wasn't made")
+    }, deleteFile = FALSE)
     
-    enable("anatomicalHeatmapDownload")
+    activateItems("anatomicalHeatmapDownload")
     output$anatomicalHeatmapDownload <- downloadHandler(
       filename = function() {
         paste0("anatomicalHeatmap", ".svg")
       },
       content = function(file) {
-        disable("anatomicalHeatmapDownload")
+        deactivateItems("anatomicalHeatmapDownload")
         ggsave(file, theHeatmap, height = length(unique(valueTable$x)) + 2, width = length(slices) + 1,limitsize = FALSE)
-        print("Done Downloading Heatmap")
+        message("Done Downloading Heatmap")
       }
     )
     
