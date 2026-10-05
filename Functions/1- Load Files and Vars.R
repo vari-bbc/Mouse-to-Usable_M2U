@@ -1,17 +1,5 @@
 # ___________________ ----
 
-sourceFunctions <- function(functionFolderPath) {
-  # List all R files in the specified folder
-  rFiles <- list.files(path = functionFolderPath, pattern = "\\.R$", full.names = TRUE)
-  
-  # Source each R file
-  for (file in rFiles) {
-    source(here::here(file))
-  }
-}
-
-# ___________________ ----
-
 fileImport <- function(fileNames,paths){
   # Creates key from tree
   treeKey <- tree[, c(1, 2)]
