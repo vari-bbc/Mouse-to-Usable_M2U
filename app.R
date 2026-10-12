@@ -2,18 +2,6 @@
 # App Startup ----
 
 ## 1.0 Load Libraries ----
-# EZRShiny is not on CRAN, so it is installed from GitHub. On shinyapps.io the
-# packages are installed when the bundle is built, using the GitHub source that
-# rsconnect reads out of the installed package's DESCRIPTION, so this guard
-# never runs there. It is here so a local or HPC session that does not have
-# the package yet installs it on first start.
-if (!requireNamespace("EZRShiny", quietly = TRUE)) {
-  if (!requireNamespace("remotes", quietly = TRUE)) {
-    install.packages("remotes", repos = "https://cloud.r-project.org")
-  }
-  remotes::install_github("vari-bbc/EZRShiny")
-}
-
 # splitstackshape and lemon were in the old pacman call but are not used by
 # this app (only by StatsM2U), so they are not loaded here.
 library(EZRShiny)
